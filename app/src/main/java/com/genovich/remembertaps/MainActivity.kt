@@ -16,7 +16,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launchWhenResumed {
             simple(
-                initial = App.State.Menu,
+                initial = App.State.Menu(Menu.State.Menu),
                 process = App::process,
                 show = view::show
             )
