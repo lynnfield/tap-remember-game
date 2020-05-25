@@ -6,13 +6,17 @@ import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
 import android.widget.TextView
-import kotlin.coroutines.suspendCoroutine
+import arrow.core.Tuple2
 
-object App {
+object App : Feature<App.State, App.Action> {
     sealed class State {
         data class Menu(val state: com.genovich.remembertaps.Menu.State) : State()
         object ConfigureGame : State()
         object Game : State()
+
+        companion object {
+            val initial: State = Menu(com.genovich.remembertaps.Menu.State.Menu)
+        }
     }
 
     sealed class Action {
@@ -21,27 +25,27 @@ object App {
         object Game : Action()
     }
 
-    fun process(input: Pair<State, Action>): State = when (val state = input.first) {
-        is State.Menu -> when (val action = input.second) {
+    override fun process(input: Tuple2<State, Action>): State = when (val state = input.a) {
+        is State.Menu -> when (val action = input.b) {
             is Action.Menu -> when (action.action) {
                 Menu.Action.Start -> State.ConfigureGame
             }
             Action.ConfigureGame -> state
             Action.Game -> state
         }
-        State.ConfigureGame -> when (input.second) {
+        State.ConfigureGame -> when (input.b) {
             is Action.Menu -> state
             Action.ConfigureGame -> State.Game
             Action.Game -> state
         }
-        State.Game -> when (input.second) {
+        State.Game -> when (input.b) {
             is Action.Menu -> state
             Action.ConfigureGame -> state
             Action.Game -> State.Menu(Menu.State.Menu)
         }
     }
 
-    class View(context: Context) : FrameLayout(context) {
+    class View(context: Context) : FrameLayout(context), Widget<State, Action> {
 
         private val stub = TextView(context).apply {
             gravity = Gravity.CENTER
@@ -49,33 +53,27 @@ object App {
 
         private val menu = Menu.View(context)
 
-        fun show(state: State): Source<Action> {
-            return suspend {
-                removeAllViews()
-                when (state) {
-                    is State.Menu -> {
-                        addView(menu, LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
-                        Action.Menu(menu.show())
+        override fun show(state: State, callback: (Action) -> Unit) {
+            removeAllViews()
+            when (state) {
+                is State.Menu -> {
+                    addView(menu, LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
+                    menu.show(state.state) { callback(Action.Menu(it)) }
+                }
+                State.ConfigureGame -> {
+                    addView(stub, LayoutParams(MATCH_PARENT, MATCH_PARENT))
+                    stub.text = "Configure game"
+                    stub.setOnClickListener {
+                        it.setOnClickListener(null)
+                        callback(Action.ConfigureGame)
                     }
-                    State.ConfigureGame -> {
-                        addView(stub, LayoutParams(MATCH_PARENT, MATCH_PARENT))
-                        stub.text = "Configure game"
-                        suspendCoroutine<Action> { continuation ->
-                            stub.setOnClickListener {
-                                it.setOnClickListener(null)
-                                continuation.resumeWith(Result.success(Action.ConfigureGame))
-                            }
-                        }
-                    }
-                    State.Game -> {
-                        addView(stub, LayoutParams(MATCH_PARENT, MATCH_PARENT))
-                        stub.text = "Game"
-                        suspendCoroutine { continuation ->
-                            stub.setOnClickListener {
-                                it.setOnClickListener(null)
-                                continuation.resumeWith(Result.success(Action.Game))
-                            }
-                        }
+                }
+                State.Game -> {
+                    addView(stub, LayoutParams(MATCH_PARENT, MATCH_PARENT))
+                    stub.text = "Game"
+                    stub.setOnClickListener {
+                        it.setOnClickListener(null)
+                        callback(Action.Game)
                     }
                 }
             }

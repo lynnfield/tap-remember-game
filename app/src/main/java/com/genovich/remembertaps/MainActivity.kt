@@ -1,10 +1,12 @@
 package com.genovich.remembertaps
 
 import android.os.Bundle
+import android.util.Log
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import arrow.fx.IO
 
 class MainActivity : AppCompatActivity() {
 
@@ -15,11 +17,17 @@ class MainActivity : AppCompatActivity() {
         setContentView(view, ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
         lifecycleScope.launchWhenResumed {
-            simple(
-                initial = App.State.Menu(Menu.State.Menu),
-                process = App::process,
-                show = view::show
+            val ui: (App.State) -> IO<App.Action> = { state ->
+                Log.d("asdasd", state.toString())
+                IO { view.show(state) }
+            }
+            val initial = simpleInitial(ui, App.State.initial)
+            execute(
+                logic = simpleLogic(ui, App::process),
+                fallback = { initial },
+                initial = initial
             )
+                .suspended()
         }
     }
 }
