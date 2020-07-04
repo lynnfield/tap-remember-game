@@ -7,11 +7,12 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
 import android.widget.TextView
 import arrow.core.Tuple2
+import arrow.core.toT
 
 object App : Feature<App.State, App.Action> {
     sealed class State {
         data class Menu(val state: com.genovich.remembertaps.Menu.State) : State()
-        object ConfigureGame : State()
+        data class ConfigureGame(val state: com.genovich.remembertaps.ConfigureGame.State) : State()
         object Game : State()
 
         companion object {
@@ -21,26 +22,31 @@ object App : Feature<App.State, App.Action> {
 
     sealed class Action {
         data class Menu(val action: com.genovich.remembertaps.Menu.Action) : Action()
-        object ConfigureGame : Action()
+        data class ConfigureGame(val aciton: com.genovich.remembertaps.ConfigureGame.Action) :
+            Action()
+
         object Game : Action()
     }
 
     override fun process(input: Tuple2<State, Action>): State = when (val state = input.a) {
         is State.Menu -> when (val action = input.b) {
             is Action.Menu -> when (action.action) {
-                Menu.Action.Start -> State.ConfigureGame
+                Menu.Action.Start -> State.ConfigureGame(ConfigureGame.State.initial)
             }
-            Action.ConfigureGame -> state
+            is Action.ConfigureGame -> state
             Action.Game -> state
         }
-        State.ConfigureGame -> when (input.b) {
+        is State.ConfigureGame -> when (val action = input.b) {
             is Action.Menu -> state
-            Action.ConfigureGame -> State.Game
+            is Action.ConfigureGame -> when (action.aciton) {
+                ConfigureGame.Action.Next -> State.Game
+                else -> State.ConfigureGame(ConfigureGame.process(state.state toT action.aciton))
+            }
             Action.Game -> state
         }
         State.Game -> when (input.b) {
             is Action.Menu -> state
-            Action.ConfigureGame -> state
+            is Action.ConfigureGame -> state
             Action.Game -> State.Menu(Menu.State.Menu)
         }
     }
@@ -52,6 +58,7 @@ object App : Feature<App.State, App.Action> {
         }
 
         private val menu = Menu.View(context)
+        private val configureGame = ConfigureGame.View(context)
 
         override fun show(state: State, callback: (Action) -> Unit) {
             removeAllViews()
@@ -60,12 +67,10 @@ object App : Feature<App.State, App.Action> {
                     addView(menu, LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
                     menu.show(state.state) { callback(Action.Menu(it)) }
                 }
-                State.ConfigureGame -> {
-                    addView(stub, LayoutParams(MATCH_PARENT, MATCH_PARENT))
-                    stub.text = "Configure game"
-                    stub.setOnClickListener {
-                        it.setOnClickListener(null)
-                        callback(Action.ConfigureGame)
+                is State.ConfigureGame -> {
+                    addView(configureGame, LayoutParams(MATCH_PARENT, MATCH_PARENT))
+                    configureGame.show(state.state) {
+                        callback(Action.ConfigureGame(it))
                     }
                 }
                 State.Game -> {

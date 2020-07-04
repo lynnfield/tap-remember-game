@@ -18,8 +18,8 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launchWhenResumed {
             val ui: (App.State) -> IO<App.Action> = { state ->
-                Log.d("asdasd", state.toString())
-                IO { view.show(state) }
+                Log.d("Logic/State", state.toString())
+                IO { view.show(state).also { Log.d("Logic/Action", it.toString()) } }
             }
             val initial = simpleInitial(ui, App.State.initial)
             execute(
