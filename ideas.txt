@@ -1,0 +1,6 @@
+tolerance can be adjusted over game turns
+optimize game turn: check only last tap
+replace players queue with non empty list
+
+done:
+do not compare taps with equals(), instead use comparision with precision
