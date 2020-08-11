@@ -5,10 +5,20 @@ import android.view.Gravity
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
+import arrow.core.NonEmptyList
 import arrow.core.Tuple2
 import arrow.core.toT
+import arrow.fx.IO
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-object App : Feature<App.State, App.Action> {
+@ExperimentalStdlibApi
+class App(
+    val configureGame: Feature<ConfigureGame.State, ConfigureGame.Action>,
+    val game: Feature<Game.State, Game.Action>,
+    val ui: (State) -> IO<Action>
+) : Feature<App.State, App.Action> {
+
     sealed class State {
         data class Menu(val state: com.genovich.remembertaps.Menu.State) : State()
         data class ConfigureGame(val state: com.genovich.remembertaps.ConfigureGame.State) : State()
@@ -21,75 +31,91 @@ object App : Feature<App.State, App.Action> {
 
     sealed class Action {
         data class Menu(val action: com.genovich.remembertaps.Menu.Action) : Action()
-        data class ConfigureGame(val aciton: com.genovich.remembertaps.ConfigureGame.Action) :
+        data class ConfigureGame(val action: com.genovich.remembertaps.ConfigureGame.Action) :
             Action()
 
         data class Game(val action: com.genovich.remembertaps.Game.Action) : Action()
     }
 
-    override fun process(input: Tuple2<State, Action>): State = when (val state = input.a) {
-        is State.Menu -> when (val action = input.b) {
-            is Action.Menu -> when (action.action) {
-                Menu.Action.Start -> State.ConfigureGame(ConfigureGame.State.initial)
-            }
-            is Action.ConfigureGame -> state
-            is Action.Game -> state
-        }
-        is State.ConfigureGame -> when (val action = input.b) {
-            is Action.Menu -> state
-            is Action.ConfigureGame -> when (action.aciton) {
-                ConfigureGame.Action.Next -> when (state.state) {
-                    is ConfigureGame.State.PlayerList -> State.Game(
-                        Game.State.Adding(
-                            playersQueue = listOf(
-                                state.state.first,
-                                state.state.second
-                            ) + state.state.others,
-                            originalTaps = emptyList(),
-                            currentTaps = emptyList()
-                        )
-                    )
+    override fun process(input: Tuple2<State, Action>): Tuple2<State, NonEmptyList<IO<Action>>> =
+        when (val state = input.a) {
+            is State.Menu -> when (val action = input.b) {
+                is Action.Menu -> when (action.action) {
+                    Menu.Action.Start ->
+                        State.ConfigureGame(ConfigureGame.State.initial).let(::stateAndShow)
                 }
-                else -> State.ConfigureGame(ConfigureGame.process(state.state toT action.aciton))
+                is Action.ConfigureGame -> state.let(::stateAndShow)
+                is Action.Game -> state.let(::stateAndShow)
             }
-            is Action.Game -> state
-        }
-        is State.Game -> when (val action = input.b) {
-            is Action.Menu -> state
-            is Action.ConfigureGame -> state
-            is Action.Game -> when (action.action) {
-                is Game.Action.PlayerTap -> State.Game(Game.process(state.state toT action.action))
-                Game.Action.Next -> State.Menu(Menu.State.Menu)
+            is State.ConfigureGame -> when (val action = input.b) {
+                is Action.Menu -> state.let(::stateAndShow)
+                is Action.ConfigureGame -> when (action.action) {
+                    ConfigureGame.Action.Next -> when (state.state) {
+                        is ConfigureGame.State.PlayerList -> State.Game(
+                            Game.State.Adding(
+                                playersQueue = buildList {
+                                    add(state.state.first)
+                                    add(state.state.second)
+                                    addAll(state.state.others)
+                                },
+                                originalTaps = emptyList(),
+                                currentTaps = emptyList()
+                            )
+                        ).let(::stateAndShow)
+                    }
+                    is ConfigureGame.Action.Add, is ConfigureGame.Action.Remove, is ConfigureGame.Action.SetName ->
+                        configureGame.process(state.state toT action.action).bimap(
+                            fl = { State.ConfigureGame(it) },
+                            fr = { actions -> actions.map { it.map(Action::ConfigureGame) } }
+                        )
+                }
+                is Action.Game -> state.let(::stateAndShow)
+            }
+            is State.Game -> when (val action = input.b) {
+                is Action.Menu -> state.let(::stateAndShow)
+                is Action.ConfigureGame -> state.let(::stateAndShow)
+                is Action.Game -> when (action.action) {
+                    Game.Action.Next -> State.Menu(Menu.State.Menu).let(::stateAndShow)
+                    is Game.Action.PlayerTap, Game.Action.Timeout ->
+                        game.process(state.state toT action.action).bimap(
+                            fl = { State.Game(it) },
+                            fr = { actions -> actions.map { it.map(Action::Game) } }
+                        )
+                }
             }
         }
-    }
+
+    private fun stateAndShow(state: State) = state toT NonEmptyList(ui(state))
 
     class View(context: Context) : FrameLayout(context), Widget<State, Action> {
 
+        private val main = Dispatchers.Main
         private val menu = Menu.View(context)
         private val configureGame = ConfigureGame.View(context)
         private val game = Game.View(context)
 
-        override fun show(state: State, callback: (Action) -> Unit) {
+        override suspend fun show(state: State): Action = when (state) {
+            is State.Menu -> show(state)
+            is State.ConfigureGame -> show(state)
+            is State.Game -> show(state)
+        }
+
+        suspend fun show(state: State.Menu): Action.Menu = withContext(main) {
             removeAllViews()
-            when (state) {
-                is State.Menu -> {
-                    addView(menu, LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
-                    menu.show(state.state) { callback(Action.Menu(it)) }
-                }
-                is State.ConfigureGame -> {
-                    addView(configureGame, LayoutParams(MATCH_PARENT, MATCH_PARENT))
-                    configureGame.show(state.state) {
-                        callback(Action.ConfigureGame(it))
-                    }
-                }
-                is State.Game -> {
-                    addView(game, LayoutParams(MATCH_PARENT, MATCH_PARENT))
-                    game.show(state.state) {
-                        callback(Action.Game(it))
-                    }
-                }
-            }
+            addView(menu, LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
+            Action.Menu(menu.show(state.state))
+        }
+
+        suspend fun show(state: State.ConfigureGame): Action.ConfigureGame = withContext(main) {
+            removeAllViews()
+            addView(configureGame, LayoutParams(MATCH_PARENT, MATCH_PARENT))
+            Action.ConfigureGame(configureGame.show(state.state))
+        }
+
+        suspend fun show(state: State.Game): Action.Game = withContext(main) {
+            removeAllViews()
+            addView(game, LayoutParams(MATCH_PARENT, MATCH_PARENT))
+            Action.Game(game.show(state.state))
         }
     }
 }

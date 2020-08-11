@@ -5,8 +5,11 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
 import arrow.core.Tuple2
+import arrow.fx.IO
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
-object Menu : Feature<Menu.State, Menu.Action> {
+class Menu(ui: (State) -> IO<Action>) : SimpleFeature<Menu.State, Menu.Action>(ui) {
     sealed class State {
         object Menu : State()
     }
@@ -15,7 +18,7 @@ object Menu : Feature<Menu.State, Menu.Action> {
         object Start : Action()
     }
 
-    override fun process(input: Tuple2<State, Action>): State = input.a
+    override fun simpleProcess(input: Tuple2<State, Action>): State = input.a
 
     class View(context: Context) : FrameLayout(context), Widget<State, Action> {
 
@@ -27,11 +30,15 @@ object Menu : Feature<Menu.State, Menu.Action> {
             addView(start, LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
         }
 
-        override fun show(state: State, callback: (Action) -> Unit) {
-            start.setOnClickListener {
-                it.setOnClickListener(null)
-                callback(Action.Start)
+        override suspend fun show(state: State): Action =
+            suspendCancellableCoroutine { continuation ->
+                continuation.invokeOnCancellation {
+                    start.setOnClickListener(null)
+                }
+                start.setOnClickListener {
+                    it.setOnClickListener(null)
+                    continuation.resume(Action.Start)
+                }
             }
-        }
     }
 }

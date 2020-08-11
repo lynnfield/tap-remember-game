@@ -8,15 +8,20 @@ import android.widget.Button
 import android.widget.LinearLayout
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatTextView
+import androidx.core.view.setPadding
 import androidx.core.widget.TextViewCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import arrow.core.Tuple2
+import arrow.fx.IO
+import kotlinx.coroutines.*
 import java.lang.Math.random
+import kotlin.coroutines.resume
 
-object ConfigureGame : Feature<ConfigureGame.State, ConfigureGame.Action> {
+class ConfigureGame(ui: (State) -> IO<Action>) :
+    SimpleFeature<ConfigureGame.State, ConfigureGame.Action>(ui) {
     sealed class State {
         data class PlayerList(
             val first: Player,
@@ -40,7 +45,7 @@ object ConfigureGame : Feature<ConfigureGame.State, ConfigureGame.Action> {
         object Next : Action()
     }
 
-    override fun process(input: Tuple2<State, Action>): State = when (val state = input.a) {
+    override fun simpleProcess(input: Tuple2<State, Action>): State = when (val state = input.a) {
         is State.PlayerList -> when (val action = input.b) {
             is Action.Add -> state.copy(others = state.others + action.player)
             is Action.Remove -> when {
@@ -79,10 +84,10 @@ object ConfigureGame : Feature<ConfigureGame.State, ConfigureGame.Action> {
             layoutManager = LinearLayoutManager(context)
         }
         private val add = Button(context).apply {
-            text = "Add"
+            text = context.getString(R.string.configure_add)
         }
         private val next = Button(context).apply {
-            text = "Next"
+            text = context.getString(R.string.configure_next)
         }
         private val adapter = Adapter()
 
@@ -94,30 +99,41 @@ object ConfigureGame : Feature<ConfigureGame.State, ConfigureGame.Action> {
             list.adapter = adapter
         }
 
-        override fun show(state: State, callback: (Action) -> Unit) {
-            when (state) {
-                is State.PlayerList -> {
-                    adapter.submitList(listOf(state.first, state.second) + state.others)
-                    adapter.onAction = {
-                        adapter.onAction = null
-                        callback(
-                            when (it) {
-                                is Adapter.Action.Remove -> Action.Remove(it.player)
-                            }
-                        )
-                    }
-                    add.setOnClickListener {
-                        it.setOnClickListener(null)
-                        // todo add some fancy names
-                        callback(Action.Add(Player("new player " + (random() * 1000 + 1).toInt())))
-                    }
-                    next.setOnClickListener {
-                        it.setOnClickListener(null)
-                        callback(Action.Next)
+        override suspend fun show(state: State): Action =
+            suspendCancellableCoroutine { continuation ->
+                when (state) {
+                    is State.PlayerList -> {
+                        adapter.submitList(listOf(state.first, state.second) + state.others)
+
+                        fun disableAll() {
+                            adapter.onAction = null
+                            add.setOnClickListener(null)
+                            next.setOnClickListener(null)
+                        }
+
+                        continuation.invokeOnCancellation {
+                            disableAll()
+                        }
+                        adapter.onAction = {
+                            disableAll()
+                            continuation.resume(
+                                when (it) {
+                                    is Adapter.Action.Remove -> Action.Remove(it.player)
+                                }
+                            )
+                        }
+                        add.setOnClickListener {
+                            disableAll()
+                            // todo add some fancy names
+                            continuation.resume(Action.Add(Player("new player " + (random() * 1000 + 1).toInt())))
+                        }
+                        next.setOnClickListener {
+                            disableAll()
+                            continuation.resume(Action.Next)
+                        }
                     }
                 }
             }
-        }
 
         class Adapter : ListAdapter<Player, ViewHolder>(PlayerItemCallback()) {
 
@@ -132,29 +148,34 @@ object ConfigureGame : Feature<ConfigureGame.State, ConfigureGame.Action> {
                 ViewHolder(parent.context)
 
             override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-                holder.playerView.show(getItem(position)) {
-                    onAction?.invoke(
-                        when (it) {
-                            is PlayerItemView.Action.Remove -> Action.Remove(it.player)
-                        }
-                    )
+                holder.launch {
+                    val action = when (val action = holder.playerView.show(getItem(position))) {
+                        is PlayerItemView.Action.Remove -> Action.Remove(action.player)
+                    }
+                    onAction?.invoke(action)
                 }
             }
 
+            override fun onViewRecycled(holder: ViewHolder) {
+                super.onViewRecycled(holder)
+                holder.coroutineContext.cancelChildren()
+            }
         }
 
-        class ViewHolder(context: Context) : RecyclerView.ViewHolder(PlayerItemView(context)) {
+        class ViewHolder(
+            context: Context
+        ) : RecyclerView.ViewHolder(PlayerItemView(context)),
+            CoroutineScope by CoroutineScope(Job()) {
+
             val playerView: PlayerItemView get() = itemView as PlayerItemView
         }
 
         class PlayerItemCallback : DiffUtil.ItemCallback<Player>() {
-            override fun areItemsTheSame(oldItem: Player, newItem: Player): Boolean {
-                return oldItem === newItem
-            }
+            override fun areItemsTheSame(oldItem: Player, newItem: Player): Boolean =
+                oldItem === newItem
 
-            override fun areContentsTheSame(oldItem: Player, newItem: Player): Boolean {
-                return oldItem == newItem
-            }
+            override fun areContentsTheSame(oldItem: Player, newItem: Player): Boolean =
+                oldItem == newItem
         }
 
         class PlayerItemView(context: Context) : Widget<Player, PlayerItemView.Action>,
@@ -172,18 +193,16 @@ object ConfigureGame : Feature<ConfigureGame.State, ConfigureGame.Action> {
             }
 
             init {
+                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+                setPadding(resources.getDimensionPixelOffset(R.dimen.dp5))
                 addView(name, LayoutParams(0, MATCH_PARENT, 1f))
-                // todo adjust to end
                 addView(removeButton, LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
             }
 
-            override fun show(state: Player, callback: (Action) -> Unit) {
+            override suspend fun show(state: Player): Action {
                 name.text = state.name
-                removeButton.setOnClickListener {
-                    callback(Action.Remove(state))
-                }
+                return removeButton.awaitClick().let { Action.Remove(state) }
             }
         }
-
     }
 }

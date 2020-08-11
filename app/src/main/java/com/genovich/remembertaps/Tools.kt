@@ -1,48 +1,68 @@
 package com.genovich.remembertaps
 
-import arrow.core.Tuple2
-import arrow.core.left
-import arrow.core.toT
+import android.view.View
+import arrow.core.*
 import arrow.fx.IO
-import arrow.fx.extensions.io.apply.tupled
+import arrow.fx.extensions.io.concurrent.raceN
+import arrow.fx.extensions.io.functor.tupleLeft
 import arrow.fx.handleErrorWith
-import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
+import kotlin.coroutines.resume
 
 interface Feature<STATE : Any, INPUT : Any> {
-    fun process(input: Tuple2<STATE, INPUT>): STATE
+    fun process(input: Tuple2<STATE, INPUT>): Tuple2<STATE, NonEmptyList<IO<INPUT>>>
+}
+
+abstract class SimpleFeature<STATE : Any, INPUT : Any>(
+    val ui: (STATE) -> IO<INPUT>
+) : Feature<STATE, INPUT> {
+
+    abstract fun simpleProcess(input: Tuple2<STATE, INPUT>): STATE
+
+    override fun process(input: Tuple2<STATE, INPUT>): Tuple2<STATE, NonEmptyList<IO<INPUT>>> =
+        simpleProcess(input).let { it toT Nel(ui(it)) }
 }
 
 interface Widget<STATE : Any, INPUT : Any> {
-    fun show(state: STATE, callback: (INPUT) -> Unit)
+    suspend fun show(state: STATE): INPUT
 }
 
-suspend fun <STATE : Any, INPUT : Any> Widget<STATE, INPUT>.show(state: STATE): INPUT =
-    suspendCoroutine { continuation ->
-        show(state) { continuation.resumeWith(Result.success(it)) }
+fun <STATE : Any, INPUT : Any> execute(
+    logic: (Tuple2<STATE, INPUT>) -> Tuple2<STATE, NonEmptyList<IO<INPUT>>>,
+    fallback: (Throwable) -> IO<Tuple2<STATE, INPUT>>, // todo bad
+    initial: Tuple2<STATE, NonEmptyList<IO<INPUT>>>,
+    parallelDispatcher: CoroutineContext
+): Flow<STATE> = flow {
+    var value = initial
+
+    while (coroutineContext.isActive) {
+        emit(value.a)
+
+        value = value.b.firstOfAll(coroutineContext + parallelDispatcher).tupleLeft(value.a)
+            .handleErrorWith(fallback)
+            .map(logic)
+            .suspended()
+    }
+}
+
+fun <T> NonEmptyList<IO<T>>.firstOfAll(coroutineContext: CoroutineContext): IO<T> =
+    tail.fold(head) { acc, io ->
+        coroutineContext.raceN(acc, io).map {
+            it.fold(::identity, ::identity)
+        }
     }
 
-fun <STATE : Any, INPUT : Any> simpleLogic(
-    ui: (STATE) -> IO<INPUT>,
-    logic: (Tuple2<STATE, INPUT>) -> STATE
-): (Tuple2<STATE, INPUT>) -> Tuple2<IO<STATE>, IO<INPUT>> = { input ->
-    logic(input).let { IO.just(it) toT ui(it) }
-}
-
-fun <STATE : Any, INPUT : Any> simpleInitial(
-    ui: (STATE) -> IO<INPUT>,
-    initial: STATE
-): IO<Tuple2<STATE, INPUT>> = tupled(IO.just(initial), ui(initial))
-
-// todo looks creepy
-// todo exit condition?
-fun <STATE : Any, INPUT : Any> execute(
-    logic: (Tuple2<STATE, INPUT>) -> Tuple2<IO<STATE>, IO<INPUT>>,
-    fallback: (Throwable) -> IO<Tuple2<STATE, INPUT>>,
-    initial: IO<Tuple2<STATE, INPUT>>
-): IO<STATE> = IO.tailRecM(initial) { newIo ->
-    newIo                           // IO<Tuple<State, Input>>
-        .handleErrorWith(fallback)  // IO<Tuple<State, Input>>
-        .map(logic)                 // IO<Tuple<IO<State>, IO<Input>>
-        .map { (stateIo, inputIo) -> tupled(stateIo, inputIo) } // IO<IO<Tuple<State, Input>>>
-        .map { it.left() }          // IO<Either<IO<Tuple<State, Input>>, Nothing>>
+suspend fun View.awaitClick(): Unit = suspendCancellableCoroutine { continuation ->
+    setOnClickListener {
+        setOnClickListener(null)
+        continuation.resume(Unit)
+    }
+    continuation.invokeOnCancellation {
+        setOnClickListener(null)
+    }
 }

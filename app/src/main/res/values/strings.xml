@@ -1,4 +1,9 @@
 <resources>
     <string name="app_name">Remember taps</string>
     <string name="menu_start">Start</string>
+    <string name="configure_add">Add</string>
+    <string name="configure_next">Next</string>
+    <string name="game_lose">lose</string>
+    <string name="game_repeat_taps">repeat taps</string>
+    <string name="game_add_tap">add tap</string>
 </resources>
