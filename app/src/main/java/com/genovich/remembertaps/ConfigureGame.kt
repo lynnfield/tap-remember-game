@@ -4,8 +4,8 @@ import android.content.Context
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-import android.widget.Button
 import android.widget.LinearLayout
+import androidx.appcompat.widget.AppCompatButton
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.view.setPadding
@@ -83,10 +83,10 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
         private val list = RecyclerView(context).apply {
             layoutManager = LinearLayoutManager(context)
         }
-        private val add = Button(context).apply {
+        private val add = AppCompatButton(context).apply {
             text = context.getString(R.string.configure_add)
         }
-        private val next = Button(context).apply {
+        private val next = AppCompatButton(context).apply {
             text = context.getString(R.string.configure_next)
         }
         private val adapter = Adapter()
@@ -188,8 +188,13 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
             private val name = AppCompatTextView(context).apply {
                 TextViewCompat.setTextAppearance(this, android.R.style.TextAppearance_Large)
             }
-            private val removeButton = AppCompatImageButton(context).apply {
-                setImageResource(android.R.drawable.ic_delete)
+            private val removeButton = AppCompatImageButton(
+                context,
+                null,
+                R.style.Widget_AppCompat_Button_Borderless
+            ).apply {
+                setImageResource(R.drawable.ic_baseline_delete_24)
+                setPadding(resources.getDimensionPixelOffset(R.dimen.dp5))
             }
 
             init {

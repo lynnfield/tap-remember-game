@@ -1,12 +1,18 @@
-remove button's image
 theme
 rename players
-turn timeout progress animation (downscaling square or circle
+turn timeout progress animation (downscaling square or circle)
 tolerance can be adjusted over game turns
 optimize game turn: check only last tap
 replace players queue with non empty list <- or another structure with at least two elements
 network game
+fancy names for when add new player
+players colors
+reattach view
+move Add button to list
+grid
+gamefield borders
 
 done:
 do not compare taps with equals(), instead use comparision with precision
 turn timeout
+remove button's image

@@ -1,9 +1,9 @@
 package com.genovich.remembertaps
 
 import android.content.Context
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+import androidx.appcompat.widget.AppCompatButton
 import arrow.core.Tuple2
 import arrow.fx.IO
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -22,7 +22,7 @@ class Menu(ui: (State) -> IO<Action>) : SimpleFeature<Menu.State, Menu.Action>(u
 
     class View(context: Context) : FrameLayout(context), Widget<State, Action> {
 
-        private val start = Button(context).apply {
+        private val start = AppCompatButton(context).apply {
             setText(R.string.menu_start)
         }
 
