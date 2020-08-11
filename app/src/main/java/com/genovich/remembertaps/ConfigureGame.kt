@@ -194,12 +194,12 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
                 R.style.Widget_AppCompat_Button_Borderless
             ).apply {
                 setImageResource(R.drawable.ic_baseline_delete_24)
-                setPadding(resources.getDimensionPixelOffset(R.dimen.dp5))
+                setPadding(resources.getDimensionPixelOffset(R.dimen.dp8))
             }
 
             init {
                 layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
-                setPadding(resources.getDimensionPixelOffset(R.dimen.dp5))
+                setPadding(resources.getDimensionPixelOffset(R.dimen.dp8))
                 addView(name, LayoutParams(0, MATCH_PARENT, 1f))
                 addView(removeButton, LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
             }
