@@ -1,9 +1,7 @@
 package com.genovich.remembertaps
 
 import android.content.Context
-import android.view.Gravity
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
 import arrow.core.NonEmptyList
 import arrow.core.Tuple2
@@ -102,7 +100,7 @@ class App(
 
         suspend fun show(state: State.Menu): Action.Menu = withContext(main) {
             removeAllViews()
-            addView(menu, LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER))
+            addView(menu, LayoutParams(MATCH_PARENT, MATCH_PARENT))
             Action.Menu(menu.show(state.state))
         }
 

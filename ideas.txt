@@ -1,4 +1,3 @@
-theme
 rename players
 turn timeout progress animation (downscaling square or circle)
 tolerance can be adjusted over game turns
@@ -11,8 +10,12 @@ reattach view
 move Add button to list
 grid
 gamefield borders
+compose
+text at game screen
+tests
 
 done:
 do not compare taps with equals(), instead use comparision with precision
 turn timeout
 remove button's image
+theme

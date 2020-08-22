@@ -42,10 +42,10 @@ dependencies {
     implementation(fileTree("dir" to "libs", "include" to arrayOf("*.jar")))
     implementation("org.jetbrains.kotlin:kotlin-stdlib:1.4.0")
 
-    implementation("androidx.activity:activity-ktx:1.2.0-alpha07")
-    implementation("androidx.appcompat:appcompat:1.3.0-alpha01")
-    implementation("androidx.constraintlayout:constraintlayout:2.0.0-rc1")
-    implementation("androidx.core:core-ktx:1.5.0-alpha01")
+    implementation("androidx.activity:activity-ktx:1.2.0-alpha08")
+    implementation("androidx.appcompat:appcompat:1.3.0-alpha02")
+    implementation("androidx.constraintlayout:constraintlayout:2.0.0")
+    implementation("androidx.core:core-ktx:1.5.0-alpha02")
     implementation("androidx.recyclerview:recyclerview:1.2.0-alpha05")
     implementation("com.google.android.material:material:1.3.0-alpha02")
 

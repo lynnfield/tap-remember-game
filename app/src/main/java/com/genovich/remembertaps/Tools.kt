@@ -1,14 +1,21 @@
 package com.genovich.remembertaps
 
+import android.animation.ValueAnimator
+import android.util.Log
 import android.view.View
 import arrow.core.*
 import arrow.fx.IO
 import arrow.fx.extensions.io.concurrent.raceN
 import arrow.fx.extensions.io.functor.tupleLeft
 import arrow.fx.handleErrorWith
+import arrow.fx.typeclasses.Duration
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.selects.selectUnbiased
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.coroutineContext
@@ -57,6 +64,15 @@ fun <T> NonEmptyList<IO<T>>.firstOfAll(coroutineContext: CoroutineContext): IO<T
         }
     }
 
+suspend fun <T> oneOf(vararg tasks: Deferred<T>): T = selectUnbiased {
+    tasks.forEach { task ->
+        task.onAwait {
+            tasks.filter { it !== task }.forEach { it.cancel() }
+            it
+        }
+    }
+}
+
 suspend fun View.awaitClick(): Unit = suspendCancellableCoroutine { continuation ->
     setOnClickListener {
         setOnClickListener(null)
@@ -64,5 +80,20 @@ suspend fun View.awaitClick(): Unit = suspendCancellableCoroutine { continuation
     }
     continuation.invokeOnCancellation {
         setOnClickListener(null)
+    }
+}
+
+fun animation(duration: Duration): Flow<Int> = callbackFlow {
+    val timeout = duration.timeUnit.toMillis(duration.amount)
+    ValueAnimator.ofInt(timeout.toInt(), 0).apply {
+        this.duration = timeout
+        addUpdateListener {
+            if (!isClosedForSend) offer(it.animatedValue as Int)
+        }
+        start()
+        awaitClose {
+            Log.d("Cancel", "Cancel")
+            cancel()
+        }
     }
 }

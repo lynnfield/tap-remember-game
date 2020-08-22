@@ -1,13 +1,14 @@
 package com.genovich.remembertaps
 
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
+import android.util.TypedValue
 import android.view.MotionEvent
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.cardview.widget.CardView
+import androidx.core.view.setPadding
 import arrow.core.NonEmptyList
 import arrow.core.Tuple2
 import arrow.core.toT
@@ -16,9 +17,8 @@ import arrow.fx.extensions.io.functor.mapConst
 import arrow.fx.typeclasses.Duration
 import arrow.fx.typeclasses.seconds
 import arrow.syntax.collections.tail
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collect
 import kotlin.coroutines.resume
 import kotlin.math.min
 
@@ -143,6 +143,8 @@ class Game(
             addView(nameField, LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
             addView(stateField, LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
             addView(gameField, LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            setPadding(context.resources.getDimensionPixelOffset(R.dimen.dp8))
+            clipToPadding = false
         }
 
         /*
@@ -159,8 +161,6 @@ class Game(
             |---------------------|
         */
 
-        private var anim: ValueAnimator? = null
-
         override suspend fun show(state: State) = when (state) {
             is State.Adding -> show(state)
             is State.Repeating -> show(state)
@@ -169,61 +169,71 @@ class Game(
 
         suspend fun show(state: State.GameOver): Action.Next = withContext(main) {
             nameField.text = state.loser.name
-            // todo failed to update value: add tap; repeat; add tap; repeat first; timeout -> don't see lose
             stateField.text = context.getString(R.string.game_lose)
-            gameField.show(state.originalTaps.map { it.second }).let { Action.Next }
-            // todo listen both
-//            setOnClickListener {
-//                setOnClickListener(null)
-//                callback(Action.Next)
-//            }
+            oneOf(
+                async { awaitClick().let { Action.Next } },
+                async { gameField.show(state.originalTaps.map { it.second }).let { Action.Next } }
+            )
         }
 
         suspend fun show(state: State.Repeating): Action.PlayerTap = withContext(main) {
             nameField.text = state.playersQueue.first().name
             val statePrefix = context.getString(R.string.game_repeat_taps)
             stateField.text = statePrefix
-            val timeout = state.timeout.timeUnit.toMillis(state.timeout.amount)
-            // todo animation cancellation
-            anim = ValueAnimator.ofInt(timeout.toInt(), 0).apply {
-                duration = timeout
-                addUpdateListener {
-                    stateField.text =
-                        String.format("$statePrefix %.3f", it.animatedValue as Int / 1000f)
-                }
-                start()
-            }
-            Action.PlayerTap(gameField.show(state.currentTaps))
+            oneOf(
+                async {
+                    animation(state.timeout).collect {
+                        if (isActive) {
+                            stateField.text = String.format("$statePrefix %.3f", it / 1000f)
+                        }
+                    }
+                    IO.never.suspended()
+                },
+                async { Action.PlayerTap(gameField.show(state.currentTaps)) }
+            )
         }
 
         suspend fun show(state: State.Adding): Action.PlayerTap = withContext(main) {
-            anim?.cancel()
             nameField.text = state.playersQueue.first().name
             stateField.text = context.getString(R.string.game_add_tap)
             Action.PlayerTap(gameField.show(state.currentTaps))
         }
     }
 
-    class GameField(context: Context) : android.view.View(context), Widget<List<Tap>, Tap> {
+    class GameField(context: Context) : CardView(context), Widget<List<Tap>, Tap> {
 
         private var taps: List<Tap> = listOf()
 
-        private var radius: Float = 0f
+        private var circleRadius: Float = 0f
         private val circlePaint = Paint().apply {
             style = Paint.Style.FILL
-            color = Color.DKGRAY
+            color = TypedValue().also {
+                context.theme.resolveAttribute(
+                    R.attr.colorSecondary,
+                    it,
+                    true
+                )
+            }.data
+        }
+
+        init {
+            radius = context.resources.getDimension(R.dimen.dp8)
+            elevation = context.resources.getDimension(R.dimen.dp8)
         }
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-            radius = min(measuredHeight, measuredWidth) * tolerance
+            val defaultWidth = getDefaultSize(suggestedMinimumWidth, widthMeasureSpec)
+            val defaultHeight = getDefaultSize(suggestedMinimumHeight, heightMeasureSpec)
+            val size = min(defaultWidth, defaultHeight)
+            setMeasuredDimension(size, size)
+            circleRadius = min(measuredHeight, measuredWidth) * tolerance
         }
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
 
             taps.forEach {
-                canvas.drawCircle(it.x * width, it.y * height, radius, circlePaint)
+                canvas.drawCircle(it.x * width, it.y * height, circleRadius, circlePaint)
             }
         }
 

@@ -1,11 +1,12 @@
 package com.genovich.remembertaps
 
 import android.content.Context
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
-import androidx.appcompat.widget.AppCompatButton
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.view.setPadding
@@ -16,6 +17,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import arrow.core.Tuple2
 import arrow.fx.IO
+import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.*
 import java.lang.Math.random
 import kotlin.coroutines.resume
@@ -83,15 +85,16 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
         private val list = RecyclerView(context).apply {
             layoutManager = LinearLayoutManager(context)
         }
-        private val add = AppCompatButton(context).apply {
+        private val add = MaterialButton(context).apply {
             text = context.getString(R.string.configure_add)
         }
-        private val next = AppCompatButton(context).apply {
+        private val next = MaterialButton(context).apply {
             text = context.getString(R.string.configure_next)
         }
         private val adapter = Adapter()
 
         init {
+            setPadding(context.resources.getDimensionPixelOffset(R.dimen.dp8))
             orientation = VERTICAL
             addView(list, LayoutParams(MATCH_PARENT, 0, 1f))
             addView(add, LayoutParams(MATCH_PARENT, WRAP_CONTENT))
@@ -99,41 +102,40 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
             list.adapter = adapter
         }
 
-        override suspend fun show(state: State): Action =
-            suspendCancellableCoroutine { continuation ->
-                when (state) {
-                    is State.PlayerList -> {
-                        adapter.submitList(listOf(state.first, state.second) + state.others)
+        override suspend fun show(state: State): Action = suspendCancellableCoroutine { cont ->
+            when (state) {
+                is State.PlayerList -> {
+                    adapter.submitList(listOf(state.first, state.second) + state.others)
 
-                        fun disableAll() {
-                            adapter.onAction = null
-                            add.setOnClickListener(null)
-                            next.setOnClickListener(null)
-                        }
+                    fun disableAll() {
+                        adapter.onAction = null
+                        add.setOnClickListener(null)
+                        next.setOnClickListener(null)
+                    }
 
-                        continuation.invokeOnCancellation {
-                            disableAll()
-                        }
-                        adapter.onAction = {
-                            disableAll()
-                            continuation.resume(
-                                when (it) {
-                                    is Adapter.Action.Remove -> Action.Remove(it.player)
-                                }
-                            )
-                        }
-                        add.setOnClickListener {
-                            disableAll()
-                            // todo add some fancy names
-                            continuation.resume(Action.Add(Player("new player " + (random() * 1000 + 1).toInt())))
-                        }
-                        next.setOnClickListener {
-                            disableAll()
-                            continuation.resume(Action.Next)
-                        }
+                    cont.invokeOnCancellation {
+                        disableAll()
+                    }
+                    adapter.onAction = {
+                        disableAll()
+                        cont.resume(
+                            when (it) {
+                                is Adapter.Action.Remove -> Action.Remove(it.player)
+                            }
+                        )
+                    }
+                    add.setOnClickListener {
+                        disableAll()
+                        // todo add some fancy names
+                        cont.resume(Action.Add(Player("new player " + (random() * 1000 + 1).toInt())))
+                    }
+                    next.setOnClickListener {
+                        disableAll()
+                        cont.resume(Action.Next)
                     }
                 }
             }
+        }
 
         class Adapter : ListAdapter<Player, ViewHolder>(PlayerItemCallback()) {
 
@@ -149,6 +151,7 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
 
             override fun onBindViewHolder(holder: ViewHolder, position: Int) {
                 holder.launch {
+                    // todo looks creepy
                     val action = when (val action = holder.playerView.show(getItem(position))) {
                         is PlayerItemView.Action.Remove -> Action.Remove(action.player)
                     }
@@ -186,12 +189,18 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
             }
 
             private val name = AppCompatTextView(context).apply {
-                TextViewCompat.setTextAppearance(this, android.R.style.TextAppearance_Large)
+                TextViewCompat.setTextAppearance(
+                    this,
+                    TypedValue().also {
+                        context.theme.resolveAttribute(R.attr.textAppearanceListItem, it, true)
+                    }.data
+                )
+                gravity = Gravity.CENTER_VERTICAL
             }
             private val removeButton = AppCompatImageButton(
                 context,
                 null,
-                R.style.Widget_AppCompat_Button_Borderless
+                R.style.Widget_MaterialComponents_Button_OutlinedButton
             ).apply {
                 setImageResource(R.drawable.ic_baseline_delete_24)
                 setPadding(resources.getDimensionPixelOffset(R.dimen.dp8))
@@ -199,7 +208,6 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
 
             init {
                 layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
-                setPadding(resources.getDimensionPixelOffset(R.dimen.dp8))
                 addView(name, LayoutParams(0, MATCH_PARENT, 1f))
                 addView(removeButton, LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
             }
