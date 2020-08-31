@@ -38,7 +38,7 @@ class MainActivity : AppCompatActivity() {
 
         execute(
             logic = { input ->
-                Log.d("Logic/Step/State", input.a.toString())
+                Log.d("Logic/Step/State", " " + input.a.toString())
                 Log.d("Logic/Step/Action", input.b.toString())
                 app.process(input).also { output ->
                     Log.d("Logic/Step/Result", output.a.toString())

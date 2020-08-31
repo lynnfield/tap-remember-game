@@ -12,11 +12,15 @@ import kotlin.coroutines.resume
 
 class Menu(ui: (State) -> IO<Action>) : SimpleFeature<Menu.State, Menu.Action>(ui) {
     sealed class State {
-        object Menu : State()
+        object Menu : State() {
+            override fun toString() = this::class.qualifiedName!!
+        }
     }
 
     sealed class Action {
-        object Start : Action()
+        object Start : Action() {
+            override fun toString() = this::class.qualifiedName!!
+        }
     }
 
     override fun simpleProcess(input: Tuple2<State, Action>): State = input.a

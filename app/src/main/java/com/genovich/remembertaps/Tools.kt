@@ -1,23 +1,24 @@
 package com.genovich.remembertaps
 
 import android.animation.ValueAnimator
-import android.util.Log
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
+import android.widget.EditText
 import arrow.core.*
 import arrow.fx.IO
 import arrow.fx.extensions.io.concurrent.raceN
 import arrow.fx.extensions.io.functor.tupleLeft
 import arrow.fx.handleErrorWith
 import arrow.fx.typeclasses.Duration
-import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.selects.selectUnbiased
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resume
 
@@ -66,11 +67,26 @@ fun <T> NonEmptyList<IO<T>>.firstOfAll(coroutineContext: CoroutineContext): IO<T
 
 suspend fun <T> oneOf(vararg tasks: Deferred<T>): T = selectUnbiased {
     tasks.forEach { task ->
-        task.onAwait {
+        task.onAwait { result ->
             tasks.filter { it !== task }.forEach { it.cancel() }
-            it
+            result
         }
     }
+}
+
+@Suppress("DeferredIsResult")
+fun <T> CoroutineScope.later(
+    context: CoroutineContext = EmptyCoroutineContext,
+    block: suspend CoroutineScope.() -> T
+): Deferred<T> = async(context, CoroutineStart.LAZY, block)
+
+@Suppress("DeferredIsResult")
+fun <T> CoroutineScope.forever(
+    context: CoroutineContext = EmptyCoroutineContext,
+    block: suspend CoroutineScope.() -> T
+): Deferred<Nothing> = async(context, CoroutineStart.LAZY) {
+    block()
+    suspendCancellableCoroutine<Nothing> {}
 }
 
 suspend fun View.awaitClick(): Unit = suspendCancellableCoroutine { continuation ->
@@ -83,6 +99,7 @@ suspend fun View.awaitClick(): Unit = suspendCancellableCoroutine { continuation
     }
 }
 
+@ExperimentalCoroutinesApi
 fun animation(duration: Duration): Flow<Int> = callbackFlow {
     val timeout = duration.timeUnit.toMillis(duration.amount)
     ValueAnimator.ofInt(timeout.toInt(), 0).apply {
@@ -92,8 +109,26 @@ fun animation(duration: Duration): Flow<Int> = callbackFlow {
         }
         start()
         awaitClose {
-            Log.d("Cancel", "Cancel")
             cancel()
         }
     }
+}
+
+@Suppress("DeferredIsResult")
+suspend fun EditText.getChangedText(): String = suspendCancellableCoroutine { continuation ->
+    val textWatcher = object : TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+
+        override fun afterTextChanged(s: Editable?) {
+            removeTextChangedListener(this)
+            if (continuation.isActive) {
+                continuation.resume(s?.toString().orEmpty())
+            }
+        }
+    }
+
+    addTextChangedListener(textWatcher)
+    continuation.invokeOnCancellation { removeTextChangedListener(textWatcher) }
 }

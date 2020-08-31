@@ -8,7 +8,6 @@ import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
 import androidx.appcompat.widget.AppCompatImageButton
-import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.view.setPadding
 import androidx.core.widget.TextViewCompat
 import androidx.recyclerview.widget.DiffUtil
@@ -18,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView
 import arrow.core.Tuple2
 import arrow.fx.IO
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.*
 import java.lang.Math.random
 import kotlin.coroutines.resume
@@ -44,7 +44,9 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
         data class Add(val player: Player) : Action()
         data class Remove(val player: Player) : Action()
         data class SetName(val player: Player, val name: String) : Action()
-        object Next : Action()
+        object Next : Action() {
+            override fun toString() = this::class.qualifiedName!!
+        }
     }
 
     override fun simpleProcess(input: Tuple2<State, Action>): State = when (val state = input.a) {
@@ -67,7 +69,7 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
             is Action.SetName -> {
                 when (action.player) {
                     state.first -> state.copy(first = state.first.copy(name = action.name))
-                    state.second -> state.copy(first = state.second.copy(name = action.name))
+                    state.second -> state.copy(second = state.second.copy(name = action.name))
                     else -> state.copy(others = state.others.map {
                         when (action.player) {
                             it -> it.copy(name = action.name)
@@ -121,6 +123,7 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
                         cont.resume(
                             when (it) {
                                 is Adapter.Action.Remove -> Action.Remove(it.player)
+                                is Adapter.Action.Rename -> Action.SetName(it.player, it.name)
                             }
                         )
                     }
@@ -139,9 +142,9 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
 
         class Adapter : ListAdapter<Player, ViewHolder>(PlayerItemCallback()) {
 
-            // todo edit name
             sealed class Action {
                 data class Remove(val player: Player) : Action()
+                data class Rename(val player: Player, val name: String) : Action()
             }
 
             var onAction: ((Action) -> Unit)? = null
@@ -150,10 +153,12 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
                 ViewHolder(parent.context)
 
             override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+                // todo do not work as expected, because of incorrect usage
                 holder.launch {
                     // todo looks creepy
                     val action = when (val action = holder.playerView.show(getItem(position))) {
                         is PlayerItemView.Action.Remove -> Action.Remove(action.player)
+                        is PlayerItemView.Action.Rename -> Action.Rename(action.player, action.name)
                     }
                     onAction?.invoke(action)
                 }
@@ -175,7 +180,7 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
 
         class PlayerItemCallback : DiffUtil.ItemCallback<Player>() {
             override fun areItemsTheSame(oldItem: Player, newItem: Player): Boolean =
-                oldItem === newItem
+                oldItem.name == newItem.name
 
             override fun areContentsTheSame(oldItem: Player, newItem: Player): Boolean =
                 oldItem == newItem
@@ -186,9 +191,10 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
 
             sealed class Action {
                 data class Remove(val player: Player) : Action()
+                data class Rename(val player: Player, val name: String) : Action()
             }
 
-            private val name = AppCompatTextView(context).apply {
+            private val nameEditor = TextInputEditText(context).apply {
                 TextViewCompat.setTextAppearance(
                     this,
                     TypedValue().also {
@@ -207,14 +213,17 @@ class ConfigureGame(ui: (State) -> IO<Action>) :
             }
 
             init {
-                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
-                addView(name, LayoutParams(0, MATCH_PARENT, 1f))
+                layoutParams = LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+                addView(nameEditor, LayoutParams(0, WRAP_CONTENT, 1f))
                 addView(removeButton, LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
             }
 
-            override suspend fun show(state: Player): Action {
-                name.text = state.name
-                return removeButton.awaitClick().let { Action.Remove(state) }
+            override suspend fun show(state: Player): Action = withContext(Dispatchers.Main) {
+                nameEditor.setText(state.name)
+                oneOf(
+                    later { Action.Rename(state, nameEditor.getChangedText()) },
+                    later { removeButton.awaitClick().let { Action.Remove(state) } }
+                )
             }
         }
     }

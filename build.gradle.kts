@@ -5,7 +5,8 @@ buildscript {
         jcenter()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle:4.2.0-alpha07")
+        // todo remove buildsrc fix when 4.2.0-alpha09
+        classpath("com.android.tools.build:gradle:4.2.0-alpha08")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.4.0")
 
         // NOTE: Do not place your application dependencies here; they belong

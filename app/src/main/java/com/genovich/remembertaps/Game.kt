@@ -29,7 +29,7 @@ class Game(
 
     companion object {
         // todo extract dependency?
-        val tolerance = .05f
+        const val tolerance = .05f
 
         // todo extract dependency?
         val timeout = 2.seconds
@@ -161,38 +161,41 @@ class Game(
             |---------------------|
         */
 
+        @ExperimentalCoroutinesApi
         override suspend fun show(state: State) = when (state) {
             is State.Adding -> show(state)
             is State.Repeating -> show(state)
             is State.GameOver -> show(state)
         }
 
+        @Suppress("MemberVisibilityCanBePrivate")
         suspend fun show(state: State.GameOver): Action.Next = withContext(main) {
             nameField.text = state.loser.name
             stateField.text = context.getString(R.string.game_lose)
             oneOf(
-                async { awaitClick().let { Action.Next } },
-                async { gameField.show(state.originalTaps.map { it.second }).let { Action.Next } }
+                later { awaitClick().let { Action.Next } },
+                later { gameField.show(state.originalTaps.map { it.second }).let { Action.Next } }
             )
         }
 
+        @ExperimentalCoroutinesApi
         suspend fun show(state: State.Repeating): Action.PlayerTap = withContext(main) {
             nameField.text = state.playersQueue.first().name
             val statePrefix = context.getString(R.string.game_repeat_taps)
             stateField.text = statePrefix
             oneOf(
-                async {
+                forever {
                     animation(state.timeout).collect {
                         if (isActive) {
                             stateField.text = String.format("$statePrefix %.3f", it / 1000f)
                         }
                     }
-                    IO.never.suspended()
                 },
-                async { Action.PlayerTap(gameField.show(state.currentTaps)) }
+                later { Action.PlayerTap(gameField.show(state.currentTaps)) }
             )
         }
 
+        @Suppress("MemberVisibilityCanBePrivate")
         suspend fun show(state: State.Adding): Action.PlayerTap = withContext(main) {
             nameField.text = state.playersQueue.first().name
             stateField.text = context.getString(R.string.game_add_tap)
